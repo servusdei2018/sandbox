@@ -84,25 +84,33 @@ clean:
 ## images: Build all agent Docker images from the deployments directory.
 images: image-claude image-codex image-opencode image-gemini image-kilocode
 
+## publish-images: Publish all built agent Docker images to GHCR.
+publish-images: images
+	docker push ghcr.io/servusdei2018/sandbox-claude:latest
+	docker push ghcr.io/servusdei2018/sandbox-codex:latest
+	docker push ghcr.io/servusdei2018/sandbox-opencode:latest
+	docker push ghcr.io/servusdei2018/sandbox-gemini:latest
+	docker push ghcr.io/servusdei2018/sandbox-kilocode:latest
+
 ## image-claude: Build the sandbox-claude image.
 image-claude:
-	docker build -t sandbox-claude:latest -f deployments/Dockerfile.claude deployments/
+	docker build -t sandbox-claude:latest -t ghcr.io/servusdei2018/sandbox-claude:latest -f deployments/Dockerfile.claude deployments/
 
 ## image-codex: Build the sandbox-codex image.
 image-codex:
-	docker build -t sandbox-codex:latest -f deployments/Dockerfile.codex deployments/
+	docker build -t sandbox-codex:latest -t ghcr.io/servusdei2018/sandbox-codex:latest -f deployments/Dockerfile.codex deployments/
 
 ## image-opencode: Build the sandbox-opencode image.
 image-opencode:
-	docker build -t sandbox-opencode:latest -f deployments/Dockerfile.opencode deployments/
+	docker build -t sandbox-opencode:latest -t ghcr.io/servusdei2018/sandbox-opencode:latest -f deployments/Dockerfile.opencode deployments/
 
 ## image-gemini: Build the sandbox-gemini image.
 image-gemini:
-	docker build -t sandbox-gemini:latest -f deployments/Dockerfile.gemini deployments/
+	docker build -t sandbox-gemini:latest -t ghcr.io/servusdei2018/sandbox-gemini:latest -f deployments/Dockerfile.gemini deployments/
 
 ## image-kilocode: Build the sandbox-kilocode image.
 image-kilocode:
-	docker build -t sandbox-kilocode:latest -f deployments/Dockerfile.kilocode deployments/
+	docker build -t sandbox-kilocode:latest -t ghcr.io/servusdei2018/sandbox-kilocode:latest -f deployments/Dockerfile.kilocode deployments/
 
 ## tidy: Tidy and verify Go modules.
 tidy:

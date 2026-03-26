@@ -90,33 +90,52 @@ Out of the box, `sandbox` automatically detects and routes the following tools t
 On its first run, `sandbox` generates a configuration file at `~/.sandbox/config.yaml`. It looks like this:
 
 ```yaml
+# Sandbox CLI Configuration
+# See https://github.com/servusdei2018/sandbox for documentation.
+
 images:
-  default:  "alpine:latest"
-  python:   "python:3.13-alpine"
-  node:     "node:24-alpine"
-  claude:   "sandbox-claude:latest"
-  gemini:   "sandbox-gemini:latest"
-  kilocode: "sandbox-kilocode:latest"
-  codex:    "sandbox-codex:latest"
-  opencode: "sandbox-opencode:latest"
-
+    bun: oven/bun:alpine
+    claude: ghcr.io/servusdei2018/sandbox-claude:latest
+    codex: ghcr.io/servusdei2018/sandbox-codex:latest
+    default: alpine:latest
+    gemini: ghcr.io/servusdei2018/sandbox-gemini:latest
+    go: golang:1.26-alpine
+    kilocode: ghcr.io/servusdei2018/sandbox-kilocode:latest
+    node: node:24-alpine
+    opencode: ghcr.io/servusdei2018/sandbox-opencode:latest
+    python: python:3.13-alpine
 env_whitelist:
-  - USER
-  - LANG
-
+    - LANG
+    - LC_ALL
+    - LC_CTYPE
+    - SHELL
+    - TERM
+    - COLORTERM
+    - XTERM_VERSION
+    - TZ
 env_blocklist:
-  - "AWS_*"
-  - GITHUB_TOKEN
-  - ANTHROPIC_API_KEY
-
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - AWS_SESSION_TOKEN
+    - AWS_*
+    - GCP_*
+    - GOOGLE_APPLICATION_CREDENTIALS
+    - GITHUB_TOKEN
+    - GIT_PASSWORD
+    - ANTHROPIC_API_KEY
+    - OPENAI_API_KEY
+    - COHERE_API_KEY
 container:
-  timeout: "30m"
-  network_mode: "bridge"
-  remove: true
-
+    timeout: 30m
+    network_mode: bridge
+    remove: true
 logging:
-  level: "info"     # debug | info | warn | error
-  format: "console" # console | json
+    level: info
+    format: console
+paths:
+    workspace: /work
+    config_dir: ~/.sandbox
+    cache_dir: ~/.sandbox/cache
 ```
 
 ## Developing

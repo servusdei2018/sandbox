@@ -40,23 +40,23 @@ type entry struct {
 // may be overridden by user configuration.
 var defaultRegistry = map[Type]entry{
 	TypeClaudeCode: {
-		Image:      "sandbox-claude:latest",
+		Image:      "ghcr.io/servusdei2018/sandbox-claude:latest",
 		Entrypoint: []string{"claude"},
 	},
 	TypeGeminiCLI: {
-		Image:      "sandbox-gemini:latest",
+		Image:      "ghcr.io/servusdei2018/sandbox-gemini:latest",
 		Entrypoint: []string{"gemini"},
 	},
 	TypeCodex: {
-		Image:      "sandbox-codex:latest",
+		Image:      "ghcr.io/servusdei2018/sandbox-codex:latest",
 		Entrypoint: []string{"codex"},
 	},
 	TypeKilocode: {
-		Image:      "sandbox-kilocode:latest",
+		Image:      "ghcr.io/servusdei2018/sandbox-kilocode:latest",
 		Entrypoint: []string{"kilo"},
 	},
 	TypeOpenCode: {
-		Image:      "sandbox-opencode:latest",
+		Image:      "ghcr.io/servusdei2018/sandbox-opencode:latest",
 		Entrypoint: []string{"opencode"},
 	},
 	TypePython:  {Image: "python:3.13-alpine"},

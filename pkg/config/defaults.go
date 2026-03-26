@@ -8,11 +8,11 @@ import "github.com/spf13/viper"
 // file or any CLI flags.
 func applyDefaults(v *viper.Viper) {
 	v.SetDefault("images.default", "alpine:latest")
-	v.SetDefault("images.claude", "sandbox-claude:latest")
-	v.SetDefault("images.gemini", "sandbox-gemini:latest")
-	v.SetDefault("images.codex", "sandbox-codex:latest")
-	v.SetDefault("images.kilocode", "sandbox-kilocode:latest")
-	v.SetDefault("images.opencode", "sandbox-opencode:latest")
+	v.SetDefault("images.claude", "ghcr.io/servusdei2018/sandbox-claude:latest")
+	v.SetDefault("images.gemini", "ghcr.io/servusdei2018/sandbox-gemini:latest")
+	v.SetDefault("images.codex", "ghcr.io/servusdei2018/sandbox-codex:latest")
+	v.SetDefault("images.kilocode", "ghcr.io/servusdei2018/sandbox-kilocode:latest")
+	v.SetDefault("images.opencode", "ghcr.io/servusdei2018/sandbox-opencode:latest")
 	v.SetDefault("images.python", "python:3.13-alpine")
 	v.SetDefault("images.node", "node:24-alpine")
 	v.SetDefault("images.bun", "oven/bun:alpine")

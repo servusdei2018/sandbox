@@ -65,9 +65,12 @@ sandbox run --keep sh
 
 # Use a custom seccomp profile:
 sandbox run --seccomp ./my-profile.json python app.py
+
+# Clean up stopped containers created by sandbox:
+sandbox prune
 ```
 
-You can view your current configuration with `sandbox config show` or generate a fresh config file with `sandbox config init`.
+You can manage configuration with `sandbox config` or clean up stopped containers with `sandbox prune`. Use `sandbox --help` to see all available commands.
 
 ## Supported Agents & Runtimes
 

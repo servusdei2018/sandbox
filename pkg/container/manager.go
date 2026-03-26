@@ -25,6 +25,8 @@ import (
 	"github.com/servusdei2018/sandbox/pkg/config"
 )
 
+const defaultStopTimeout = 10
+
 // Manager wraps the Docker client and provides high-level container lifecycle
 // operations needed by the sandbox CLI.
 type Manager struct {
@@ -168,12 +170,6 @@ func (m *Manager) Create(ctx context.Context, cfg *Config) (string, error) {
 		return "", fmt.Errorf("failed to build security options: %w", err)
 	}
 
-	m.logger.Debug("applying security options",
-		zap.Bool("read_only_root", secOpts.ReadonlyRootfs),
-		zap.String("user", secOpts.User),
-		zap.Int("dropped_caps", len(secOpts.CapDrop)),
-	)
-
 	hostCfg := &container.HostConfig{
 		Binds:          []string{fmt.Sprintf("%s:%s", cfg.WorkspaceDir, mountTarget)},
 		NetworkMode:    container.NetworkMode(cfg.NetworkMode),
@@ -197,6 +193,7 @@ func (m *Manager) Create(ctx context.Context, cfg *Config) (string, error) {
 		Env:          cfg.Env,
 		WorkingDir:   mountTarget,
 		User:         secOpts.User,
+		Labels:       map[string]string{"sandbox": "true"},
 		AttachStdout: true,
 		AttachStderr: true,
 		AttachStdin:  cfg.AttachStdin,
@@ -367,7 +364,7 @@ func (m *Manager) Stop(ctx context.Context, containerID string) error {
 	shortID := containerID[:12]
 	m.logger.Info("stopping container", zap.String("container_id", shortID))
 
-	timeout := 10
+	timeout := defaultStopTimeout
 	if err := m.client.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
 		return fmt.Errorf("failed to stop container %s: %w", shortID, err)
 	}
@@ -387,6 +384,11 @@ func (m *Manager) Remove(ctx context.Context, containerID string) error {
 
 	m.logger.Debug("container removed", zap.String("container_id", shortID))
 	return nil
+}
+
+// Inspect returns the container's low-level state from the Docker daemon.
+func (m *Manager) Inspect(ctx context.Context, containerID string) (container.InspectResponse, error) {
+	return m.client.ContainerInspect(ctx, containerID)
 }
 
 // Prune removes all stopped sandbox containers (those with label sandbox=true).

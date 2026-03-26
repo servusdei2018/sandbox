@@ -44,6 +44,11 @@ func TestContainerExecution_EchoHello(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, containerID)
 
+	// Verify labels.
+	inspect, err := manager.Inspect(ctx, containerID)
+	require.NoError(t, err)
+	require.Equal(t, "true", inspect.Config.Labels["sandbox"])
+
 	exitCode, err := manager.Run(ctx, containerID, false)
 	require.NoError(t, err)
 	require.Equal(t, 0, exitCode)

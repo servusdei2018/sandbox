@@ -18,6 +18,15 @@ import (
 	sandboxlog "github.com/servusdei2018/sandbox/pkg/log"
 )
 
+// ExitError is a custom error type that carries an exit code.
+type ExitError struct {
+	Code int
+}
+
+func (e *ExitError) Error() string {
+	return fmt.Sprintf("exit status %d", e.Code)
+}
+
 // runCmd returns the "sandbox run <agent> [args...]" subcommand.
 func runCmd() *cobra.Command {
 	var (
@@ -112,7 +121,10 @@ Examples:
 				}
 			}()
 
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			ctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
 			if err := manager.PullIfMissing(ctx, finalImage); err != nil {
@@ -157,30 +169,23 @@ Examples:
 				return fmt.Errorf("sandbox setup failed: %w", err)
 			}
 
-			// Graceful shutdown on Ctrl+C / SIGTERM.
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-			go func() {
-				sig := <-sigCh
-				logger.Info("received signal, stopping container",
-					zap.String("signal", sig.String()),
-					zap.String("container_id", containerID[:12]),
-				)
-				stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer stopCancel()
-				if err := manager.Stop(stopCtx, containerID); err != nil {
-					logger.Warn("failed to stop container on signal", zap.Error(err))
-				}
-				if containerCfg.RemoveOnExit {
-					if err := manager.Remove(stopCtx, containerID); err != nil {
-						logger.Warn("failed to remove container on signal", zap.Error(err))
-					}
-				}
-				os.Exit(130) // 128 + SIGINT(2) = 130
-			}()
+			// We use signal.NotifyContext above to handle graceful shutdown.
+			// The context will be canceled on SIGINT/SIGTERM, which will cause
+			// manager.Run to return (as it blocks on ContainerWait which
+			// respects context cancellation).
 
 			exitCode, err := manager.Run(ctx, containerID, containerCfg.Tty)
 			if err != nil {
+				// If the context was canceled, it's likely a signal.
+				if ctx.Err() != nil {
+					logger.Info("container execution interrupted", zap.Error(ctx.Err()))
+					// Try to stop the container before returning.
+					stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer stopCancel()
+					_ = manager.Stop(stopCtx, containerID)
+					return &ExitError{Code: 130}
+				}
+
 				logger.Error("container execution failed",
 					zap.String("agent", string(detectedAgent.Name)),
 					zap.String("image", finalImage),
@@ -201,8 +206,10 @@ Examples:
 				}
 			}
 
-			os.Exit(exitCode)
-			return nil // unreachable
+			if exitCode != 0 {
+				return &ExitError{Code: exitCode}
+			}
+			return nil
 		},
 	}
 
@@ -266,4 +273,30 @@ func configCmd() *cobra.Command {
 	})
 
 	return parent
+}
+
+// pruneCmd returns the "sandbox prune" subcommand.
+func pruneCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "prune",
+		Short: "Remove stopped sandbox containers",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			logger := sandboxlog.Logger
+			if logger == nil {
+				logger = sandboxlog.Noop()
+			}
+
+			manager, err := cnt.NewManager(logger)
+			if err != nil {
+				return fmt.Errorf("could not connect to Docker daemon: %w", err)
+			}
+			defer func() {
+				if err := manager.Close(); err != nil {
+					logger.Warn("failed to close docker manager", zap.Error(err))
+				}
+			}()
+
+			return manager.Prune(context.Background())
+		},
+	}
 }

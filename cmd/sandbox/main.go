@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -42,10 +43,16 @@ with the current working directory bind-mounted to /work.`,
 	rootCmd.PersistentFlags().String("log-format", "console", "Log format: console, json")
 
 	rootCmd.AddCommand(runCmd())
+	rootCmd.AddCommand(pruneCmd())
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(configCmd())
 
 	if err := rootCmd.Execute(); err != nil {
+		var exitErr *ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.Code)
+		}
+
 		// Logger may not be initialised yet if PersistentPreRunE wasn't called.
 		if sandboxlog.Logger != nil {
 			sandboxlog.Logger.Error("command failed", zap.Error(err))

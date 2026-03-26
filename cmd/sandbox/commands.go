@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -94,6 +95,7 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("invalid timeout %q: %w", rawTimeout, err)
 			}
+			logger.Info("parsed timeout", zap.Duration("duration", timeout))
 
 			wsDir := workspaceFlag
 			if wsDir == "" {
@@ -176,9 +178,16 @@ Examples:
 
 			exitCode, err := manager.Run(ctx, containerID, containerCfg.Tty)
 			if err != nil {
-				// If the context was canceled, it's likely a signal.
+				// If the context was canceled, it's likely a signal or timeout.
 				if ctx.Err() != nil {
-					logger.Info("container execution interrupted", zap.Error(ctx.Err()))
+					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+						logger.Warn("container execution timed out",
+							zap.Duration("timeout", timeout),
+						)
+					} else {
+						logger.Info("container execution interrupted", zap.Error(ctx.Err()))
+					}
+
 					// Try to stop the container before returning.
 					stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
 					defer stopCancel()

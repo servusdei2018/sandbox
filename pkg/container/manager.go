@@ -179,6 +179,7 @@ func (m *Manager) Create(ctx context.Context, cfg *Config) (string, error) {
 		ReadonlyRootfs: secOpts.ReadonlyRootfs,
 		Tmpfs:          secOpts.Tmpfs,
 		Resources:      secOpts.Resources,
+		Init:           &[]bool{true}[0], // Enable tini or equivalent init to handle signals for PID 1.
 	}
 
 	entrypoint := cfg.Entrypoint
@@ -288,11 +289,12 @@ func (m *Manager) Run(ctx context.Context, containerID string, tty bool) (int, e
 		return 1, fmt.Errorf("failed to attach to container %s: %w", shortID, err)
 	}
 
-	statusCh, errCh := m.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
 	if err := m.client.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		attachResp.Close()
 		return 1, fmt.Errorf("failed to start container %s: %w", shortID, err)
 	}
+
+	statusCh, errCh := m.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
 
 	if tty {
 		go func() {
@@ -327,19 +329,31 @@ func (m *Manager) Run(ctx context.Context, containerID string, tty bool) (int, e
 		}
 	}()
 
-	// Wait for the container to finish. We use ContainerWait to block until
-	// the container reaches a non-running state, then inspect for exit code.
 	select {
 	case err := <-errCh:
 		if err != nil {
+			m.logger.Debug("ContainerWait returned error", zap.Error(err))
 			attachResp.Close()
-			<-ioDone
 			return 1, fmt.Errorf("error waiting for container %s: %w", shortID, err)
 		}
+		m.logger.Debug("ContainerWait returned nil error")
 	case <-statusCh:
+		m.logger.Debug("container exited normally")
+	case <-ctx.Done():
+		m.logger.Warn("context canceled/timed out in wait loop", zap.Error(ctx.Err()))
+		attachResp.Close()
+		return 1, ctx.Err()
 	}
 
-	<-ioDone
+	// Wait for the output goroutine to finish, but with a timeout so we don't
+	// block forever if the container is still alive.
+	ioCtx, ioCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer ioCancel()
+	select {
+	case <-ioDone:
+	case <-ioCtx.Done():
+		m.logger.Debug("io copy timed out or context canceled")
+	}
 	attachResp.Close()
 
 	// ContainerInspect gives us the definitive exit code from Docker's state.

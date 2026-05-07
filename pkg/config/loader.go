@@ -69,7 +69,9 @@ func Load(logger *zap.Logger) (*Config, error) {
 	return &cfg, nil
 }
 
-// expandHome replaces a leading ~ with the provided homeDir in a path.
+// expandHome replaces a leading "~/" (or bare "~") with the provided homeDir.
+// Paths like "~otheruser/..." are intentionally left untouched because the
+// current user's homeDir would be incorrect for them.
 func expandHome(path string, homeDir string) string {
 	if path == "" {
 		return ""
@@ -77,9 +79,11 @@ func expandHome(path string, homeDir string) string {
 	if path == "~" {
 		return homeDir
 	}
-	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(os.PathSeparator)) || strings.HasPrefix(path, "~.") {
-		// Replace the ~ with homeDir and clean the path.
-		return filepath.Clean(filepath.Join(homeDir, path[1:]))
+	if suffix, ok := strings.CutPrefix(path, "~/"); ok {
+		return filepath.Join(homeDir, suffix)
+	}
+	if suffix, ok := strings.CutPrefix(path, "~"+string(os.PathSeparator)); ok {
+		return filepath.Join(homeDir, suffix)
 	}
 	return filepath.Clean(path)
 }

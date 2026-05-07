@@ -38,6 +38,7 @@ func (m *ProjectManifest) Validate() error {
 }
 
 // LoadManifest attempts to load a .sandbox.yml from the specified directory.
+//
 // If the file does not exist, it returns an empty manifest and no error.
 // Unknown YAML keys are rejected to catch typos early.
 func LoadManifest(workspaceDir string, logger *zap.Logger) (*ProjectManifest, error) {

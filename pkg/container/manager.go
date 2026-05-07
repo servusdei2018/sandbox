@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -249,63 +250,101 @@ func (m *Manager) Create(ctx context.Context, cfg *Config) (string, error) {
 func (m *Manager) Run(ctx context.Context, containerID string, tty bool) (int, error) {
 	shortID := containerID[:12]
 
-	// Put the host terminal into raw mode if TTY enabled.
 	if tty {
-		fd := os.Stdin.Fd()
-		state, err := term.SetRawTerminal(fd)
-		if err != nil {
-			m.logger.Warn("failed to set raw terminal", zap.Error(err))
-		} else {
-			defer func() {
-				if err := term.RestoreTerminal(fd, state); err != nil {
-					m.logger.Warn("failed to restore terminal", zap.Error(err))
-				}
-			}()
+		if restore := m.setupTTY(ctx, containerID); restore != nil {
+			defer restore()
 		}
-
-		// Helper to resize the container.
-		resize := func() {
-			ws, err := term.GetWinsize(fd)
-			if err != nil {
-				m.logger.Debug("failed to get window size", zap.Error(err))
-				return
-			}
-			err = m.client.ContainerResize(ctx, containerID, container.ResizeOptions{
-				Height: uint(ws.Height),
-				Width:  uint(ws.Width),
-			})
-			if err != nil {
-				m.logger.Debug("failed to resize container", zap.Error(err))
-			}
-		}
-
-		// Initial resize with a short delay to ensure the container-side
-		// TTY has been established and the application is ready.
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			resize()
-		}()
-
-		// Handle terminal resize (SIGWINCH).
-		go func() {
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGWINCH)
-			defer signal.Stop(sigChan)
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-sigChan:
-					resize()
-				}
-			}
-		}()
 	}
 
 	m.logger.Info("starting container", zap.String("container_id", shortID))
 
 	start := time.Now()
+
+	attachResp, err := m.attachIO(ctx, containerID, tty)
+	if err != nil {
+		return 1, err
+	}
+
+	exitCode, err := m.waitForCompletion(ctx, containerID, attachResp, tty)
+	if err != nil {
+		return 1, err
+	}
+
+	elapsed := time.Since(start)
+	m.logger.Info("container completed",
+		zap.String("container_id", shortID),
+		zap.Int("exit_code", exitCode),
+		zap.Duration("elapsed", elapsed),
+	)
+
+	return exitCode, nil
+}
+
+// setupTTY puts the host terminal into raw mode and starts goroutines to handle
+// container resizing on SIGWINCH. It returns a function that restores the
+// terminal to its original state; the caller must defer it. Returns nil if raw
+// mode could not be enabled.
+func (m *Manager) setupTTY(ctx context.Context, containerID string) (restore func()) {
+	fd := os.Stdin.Fd()
+	state, err := term.SetRawTerminal(fd)
+	if err != nil {
+		m.logger.Warn("failed to set raw terminal", zap.Error(err))
+		return nil
+	}
+
+	restore = func() {
+		if err := term.RestoreTerminal(fd, state); err != nil {
+			m.logger.Warn("failed to restore terminal", zap.Error(err))
+		}
+	}
+
+	// resize sends the current terminal dimensions to the container.
+	resize := func() {
+		ws, err := term.GetWinsize(fd)
+		if err != nil {
+			m.logger.Debug("failed to get window size", zap.Error(err))
+			return
+		}
+		err = m.client.ContainerResize(ctx, containerID, container.ResizeOptions{
+			Height: uint(ws.Height),
+			Width:  uint(ws.Width),
+		})
+		if err != nil {
+			m.logger.Debug("failed to resize container", zap.Error(err))
+		}
+	}
+
+	// Initial resize with a short delay to ensure the container-side
+	// TTY has been established and the application is ready.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		resize()
+	}()
+
+	// Handle terminal resize (SIGWINCH).
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGWINCH)
+		defer signal.Stop(sigChan)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-sigChan:
+				resize()
+			}
+		}
+	}()
+
+	return restore
+}
+
+// attachIO attaches to the container's I/O streams, starts the container, and
+// launches goroutines to copy stdin/stdout/stderr. It returns the attach
+// response (which the caller must eventually close) or an error.
+func (m *Manager) attachIO(ctx context.Context, containerID string, tty bool) (types.HijackedResponse, error) {
+	shortID := containerID[:12]
 
 	attachResp, err := m.client.ContainerAttach(ctx, containerID, container.AttachOptions{
 		Stream: true,
@@ -314,15 +353,13 @@ func (m *Manager) Run(ctx context.Context, containerID string, tty bool) (int, e
 		Stdin:  tty,
 	})
 	if err != nil {
-		return 1, fmt.Errorf("failed to attach to container %s: %w", shortID, err)
+		return attachResp, fmt.Errorf("failed to attach to container %s: %w", shortID, err)
 	}
 
 	if err := m.client.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		attachResp.Close()
-		return 1, fmt.Errorf("failed to start container %s: %w", shortID, err)
+		return attachResp, fmt.Errorf("failed to start container %s: %w", shortID, err)
 	}
-
-	statusCh, errCh := m.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
 
 	if tty {
 		go func() {
@@ -335,23 +372,34 @@ func (m *Manager) Run(ctx context.Context, containerID string, tty bool) (int, e
 		}()
 	}
 
+	return attachResp, nil
+}
+
+// waitForCompletion waits for the container to exit, drains remaining I/O, and
+// returns the container's exit code.
+func (m *Manager) waitForCompletion(ctx context.Context, containerID string, attachResp types.HijackedResponse, tty bool) (int, error) {
+	shortID := containerID[:12]
+
+	statusCh, errCh := m.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
+
+	// Copy container output in the background.
 	ioDone := make(chan struct{})
 	go func() {
 		defer close(ioDone)
-		var err error
+		var copyErr error
 		if tty {
-			_, err = io.Copy(os.Stdout, attachResp.Reader)
+			_, copyErr = io.Copy(os.Stdout, attachResp.Reader)
 		} else {
-			_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, attachResp.Reader)
+			_, copyErr = stdcopy.StdCopy(os.Stdout, os.Stderr, attachResp.Reader)
 		}
 
-		if err != nil && err != io.EOF {
+		if copyErr != nil && copyErr != io.EOF {
 			// "use of closed network connection" is expected when we explicitly
 			// close the attach response after the container exits.
-			if !strings.Contains(err.Error(), "use of closed network connection") {
+			if !strings.Contains(copyErr.Error(), "use of closed network connection") {
 				m.logger.Warn("error copying container output",
 					zap.String("container_id", shortID),
-					zap.Error(err),
+					zap.Error(copyErr),
 				)
 			}
 		}
@@ -390,15 +438,7 @@ func (m *Manager) Run(ctx context.Context, containerID string, tty bool) (int, e
 		return 1, fmt.Errorf("failed to inspect container %s: %w", shortID, err)
 	}
 
-	exitCode := inspect.State.ExitCode
-	elapsed := time.Since(start)
-	m.logger.Info("container completed",
-		zap.String("container_id", shortID),
-		zap.Int("exit_code", exitCode),
-		zap.Duration("elapsed", elapsed),
-	)
-
-	return exitCode, nil
+	return inspect.State.ExitCode, nil
 }
 
 // Stop stops the container with a 10-second grace period.

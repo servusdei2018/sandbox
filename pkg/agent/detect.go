@@ -28,6 +28,15 @@ var binaryToType = map[string]Type{
 	"bun":      TypeBun,
 	"bunx":     TypeBun,
 	"go":       TypeGo,
+	"cargo":    TypeRust,
+	"rustc":    TypeRust,
+	"ruby":     TypeRuby,
+	"gem":      TypeRuby,
+	"php":      TypePHP,
+	"composer": TypePHP,
+	"java":     TypeJava,
+	"javac":    TypeJava,
+	"mvn":      TypeJava,
 	"aider":    TypeAider,
 }
 

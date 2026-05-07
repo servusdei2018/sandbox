@@ -15,6 +15,10 @@ const (
 	TypeBun        Type = "bun"
 	TypeGo         Type = "go"
 	TypeAider      Type = "aider"
+	TypeRust       Type = "rust"
+	TypeRuby       Type = "ruby"
+	TypePHP        Type = "php"
+	TypeJava       Type = "java"
 	TypeGeneric    Type = "generic"
 )
 
@@ -64,6 +68,10 @@ var defaultRegistry = map[Type]entry{
 	TypeNode:   {Image: "node:24-alpine"},
 	TypeBun:    {Image: "oven/bun:alpine"},
 	TypeGo:     {Image: "golang:1.26-alpine"},
+	TypeRust:   {Image: "rust:1.95-alpine"},
+	TypeRuby:   {Image: "ruby:4.0-alpine"},
+	TypePHP:    {Image: "php:8.5-cli-alpine"},
+	TypeJava:   {Image: "eclipse-temurin:25-alpine"},
 	TypeAider: {
 		Image:      "ghcr.io/servusdei2018/sandbox-aider:latest",
 		Entrypoint: []string{"aider"},

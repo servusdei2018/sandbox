@@ -114,6 +114,10 @@ Out of the box, `sandbox` automatically detects and routes the following tools t
 - Node.js (`node`, `npm`, `npx`)
 - Bun (`bun`, `bunx`)
 - Go (`go`)
+- Rust (`cargo`, `rustc`)
+- Ruby (`ruby`, `gem`)
+- PHP (`php`, `composer`)
+- Java (`java`, `javac`, `mvn`)
 
 *(If a command doesn't match these, it falls back to a generic Alpine Linux image.)*
 
